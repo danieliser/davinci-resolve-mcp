@@ -373,35 +373,143 @@ Without this preservation, reloading would destroy the IPC connection (the C-ext
 
 ---
 
+## Proven Workflow: Timeline from JSON
+
+The most reliable way to build a complete edit is `build_timeline_from_json`. This was battle-tested across 3+ failed runs before arriving at the correct workflow order:
+
+### Workflow Order (Critical)
+
+```
+1. Create project + import media into organized folders
+2. build_timeline_from_json(insert_fusion_comp=true)
+   — creates timeline, inserts Fusion comp for placeholders, places all clips
+3. Set playhead on Fusion comp → open_page("fusion") → execute_lua(title card) → open_page("edit")
+4. Purge clip audio from A1 (delete from highest index to lowest)
+5. Place master WAV on A1 (now empty), label track
+6. Add markers
+7. Render
+```
+
+**Why this order matters:**
+- `build_timeline_from_json` creates its OWN timeline (from JSON `name` field) — do NOT create a timeline manually first
+- `insert_fusion_comp=true` inserts the Fusion comp FIRST before placing clips, preventing ripple corruption
+- Fusion comp Lua works even with other clips present — just put the playhead on the comp before switching to Fusion page
+- Audio purge (step 4) is safe — deleting A1 audio items does NOT affect V1 video clips
+
+### Sequence JSON Format
+
+```json
+{
+  "name": "Timeline Name",
+  "clips": [
+    {
+      "shot_id": "INTRO",
+      "file": null,
+      "timeline_start": 0,
+      "timeline_end": 7,
+      "clip_in": 0,
+      "clip_out": 7,
+      "notes": "Placeholder — file=null triggers Fusion comp insert"
+    },
+    {
+      "shot_id": "S003",
+      "file": "relative/path/to/clip.mp4",
+      "timeline_start": 7,
+      "timeline_end": 13.381,
+      "clip_in": 0,
+      "clip_out": 6.381,
+      "notes": "Optional description"
+    }
+  ]
+}
+```
+
+**Key fields:**
+- `file: null` — inserts a Fusion composition placeholder (when `insert_fusion_comp=true`)
+- `clip_in` / `clip_out` — source trim points in seconds. Duration is `clip_out - clip_in`, NOT `timeline_end - timeline_start`
+- `timeline_start` / `timeline_end` — timeline position in seconds (converted to frames via `86400 + round(seconds × fps)`)
+- File paths are resolved relative to the JSON file location via media pool search by clip name
+
+### Audio Track Setup
+
+Video clips bring their own audio on A1. For a clean stereo master mix:
+
+```
+1. get_timeline_items("audio", 1)  — count items
+2. Delete all A1 items in REVERSE order (highest index first to avoid index shifting)
+3. append_clip_to_track("master.wav", track_index=1, start_frame=86400)
+4. set_track_name("audio", 1, "Master Mix")
+```
+
+A1 is already stereo (inherited from the video clips), so just purge and reuse it. No need to create a separate A2 track.
+
+---
+
 ## Known Gotchas
 
-### InsertFusionCompositionIntoTimeline Always Ripples
+### 1. Insert Functions Always Ripple V1
 
-Inserting a Fusion composition pushes all downstream clips. **Workaround:** insert Fusion comps first on an empty timeline before placing clips, or delete and re-place downstream items after insertion.
+`InsertFusionCompositionIntoTimeline`, `InsertTitleIntoTimeline`, and `InsertGeneratorIntoTimeline` all insert at the playhead on V1 and ripple ALL downstream clips. No track targeting parameter exists.
 
-### Fusion Comp Duration Is Locked
+**Workaround:** Use `build_timeline_from_json(insert_fusion_comp=true)` which inserts the Fusion comp FIRST on an empty timeline before placing clips. If you must insert manually, do it before adding any clips.
+
+### 2. Fusion Comp Duration Is Locked
 
 `InsertFusionCompositionIntoTimeline` creates exactly 120 frames (5s at 24fps). The duration cannot be changed via the scripting API.
 
-### Loader Tool + PNG Alpha Is Broken
+### 3. Fusion Comp Targeting on Populated Timelines
+
+`GetFusionCompByIndex()`, `GetFusionCompByName()`, and `LoadFusionCompByName()` often return the wrong comp (usually shows as "Templates/" in name).
+
+**Working approach:** Set the playhead on the Fusion comp in the Edit page, then `open_page("fusion")`. The comp auto-opens as `fusion:GetCurrentComp()` — this reliably returns the correct comp even with other clips on the timeline.
+
+### 4. `append_clip_to_track` Does NOT Honor `start_frame` Precisely
+
+Despite accepting a `start_frame` parameter, clips get butted together end-to-end rather than placed at the specified frame. **Use `build_timeline_from_json` instead** for frame-accurate placement.
+
+### 5. Loader Tool + PNG Alpha Is Broken
 
 The Fusion Loader tool's `PostMultiplyByAlpha` fills transparent areas with the image's edge color. `GlobalIn`/`GlobalOut` default to frame 0, causing frame range mismatches. **Workaround:** use TextPlus for text-based overlays, or pre-composite images into full-resolution video clips outside Fusion.
 
-### AppendToTimeline + trackIndex Forces Mono
+### 6. AppendToTimeline + trackIndex Forces Mono
 
-When placing audio with an explicit `trackIndex`, stereo WAV files are forced to mono. No API workaround exists — manual drag-and-drop is the only way to place stereo audio on a specific track.
+When placing audio with an explicit `trackIndex`, stereo WAV files are forced to mono. **Workaround:** Use `add_track("audio")` to create a dedicated audio track, then `append_clip_to_track()` on that track. The MCP server's `add_track` passes `sub_track_type` to `timeline.AddTrack()` for stereo support.
 
-### GetClips() Returns a Dict in Newer Resolve
+### 7. GetClips() Returns a Dict in Newer Resolve
 
 `folder.GetClips()` returns `{int: clip}` dict, not a list. This fork handles both formats throughout.
 
-### Timeline Frame Offset
+### 8. Timeline Frame Offset
 
 Resolve timelines start at frame 86400 (1-hour offset at 24fps). Convert seconds to frames:
 
 ```
 frame = 86400 + round(seconds × fps)
 ```
+
+### 9. Clip Names Include File Extensions
+
+`_find_media_pool_clip()` matches on `GetClipProperty("Clip Name")` which includes the file extension. Pass `"S003.v1.mp4"` not `"S003.v1"`.
+
+### 10. `build_timeline_from_json` Requires UTF-8 Encoding
+
+If your JSON notes fields contain em dashes or other Unicode characters, `open()` needs `encoding='utf-8'`. This fork includes the fix.
+
+### 11. `build_timeline_from_json` Duration Calculation
+
+Duration is `clip_out - clip_in` (source trim range), NOT `timeline_end - timeline_start`. If these don't match, the clip will be the wrong length. Ensure your JSON `clip_out` values are exact.
+
+### 12. `save_project()` Fails During Render
+
+`save_project()` returns failure while rendering is active. **Always save AFTER render completes.** Fallback: `execute_lua("resolve:GetProjectManager():SaveProject()")`.
+
+### 13. Empty Fusion Comp Causes Render Failure
+
+If the title card Lua fails silently, the Fusion comp renders as black and may cause the render job to fail entirely. Verify the comp has content before rendering (use Lua to check tool count via file-based debugging).
+
+### 14. Media Pool Root Folder Is "Master"
+
+Create subfolders under `"Master"`, not under a non-existent root. `add_sub_folder("Master", "Clips")` is correct.
 
 ---
 
@@ -444,7 +552,27 @@ export RESOLVE_SCRIPT_PATH="/custom/path/to/Scripting/Modules"
 
 ### Stale Proxy Errors
 
-If tools return unexpected `None` results after switching projects or timelines in Resolve, call `refresh()` to re-establish all proxy references.
+If tools return unexpected `None` results after switching projects or timelines in Resolve, call `refresh()` to re-establish all proxy references. The `_ensure_project()`, `_ensure_media_pool()`, and `_ensure_timeline()` helpers handle this automatically for most operations, but manual `refresh()` may still be needed after switching projects in the Resolve UI.
+
+### Playhead Positioning Returns None
+
+`GetTimecodeFromFrame()` doesn't exist on some timeline proxies (returns `None`, not `AttributeError`). The `set_playhead_position()` implementation falls back to manual timecode math (`HH:MM:SS:FF` from `frame ÷ fps`). Always guard Resolve proxy method calls with `getattr()` + `callable()` checks.
+
+### Hot Reload Breaks IPC Connection
+
+`importlib.reload()` + new `ResolveAPI()` invalidates the DaVinciResolveScript C-extension socket handle. The current `hot_reload` implementation preserves the existing `self.resolve` handle by saving it before reload and injecting it into the new instance. If hot reload fails, restart the MCP server.
+
+### Lua Script Fails Silently
+
+`comp.Execute()` does not return Lua values or error messages. Use file-based debugging:
+
+```lua
+local f = io.open("/tmp/fusion_debug.txt", "w")
+f:write("Tool count: " .. tostring(#comp:GetToolList()) .. "\n")
+f:close()
+```
+
+Then read `/tmp/fusion_debug.txt` from your AI client to verify the script executed correctly.
 
 ---
 

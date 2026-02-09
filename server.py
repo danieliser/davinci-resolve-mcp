@@ -428,20 +428,28 @@ def append_clip_to_track(clip_name: str, track_index: int, start_frame: Optional
     clip = _find_media_pool_clip(clip_name)
     if not clip:
         return f"Clip '{clip_name}' not found in media pool."
-    info = {"mediaPoolItem": clip, "trackIndex": track_index}
+    # Detect media type from clip properties
+    clip_type = clip.GetClipProperty("Type") or ""
+    if "Video" in clip_type:
+        media_type = 1  # video only
+    elif "Audio" in clip_type:
+        media_type = 2  # audio only
+    else:
+        media_type = 1  # default to video
+    info = {"mediaPoolItem": clip, "trackIndex": track_index, "mediaType": media_type}
     if start_frame is not None:
         info["recordFrame"] = start_frame
     success = resolve_api.append_to_timeline_with_info([info])
     return f"Appended '{clip_name}' to track {track_index}." if success else f"Failed to append '{clip_name}' to track {track_index}."
 
 @mcp.tool()
-def build_timeline_from_json(json_path: str, fps: float = 24.0, timeline_start_frame: int = 86400) -> str:
-    """Build a timeline from a JSON sequence file. Creates timeline, inserts clips with trim points."""
+def build_timeline_from_json(json_path: str, fps: float = 24.0, timeline_start_frame: int = 86400, insert_fusion_comp: bool = False) -> str:
+    """Build a timeline from a JSON sequence file. Creates timeline, inserts clips with trim points. If insert_fusion_comp=True, inserts a Fusion composition for placeholder clips (file=null) before placing other clips."""
     if not resolve_api.is_connected():
         return "Not connected to DaVinci Resolve."
     import os
     try:
-        with open(json_path, 'r') as f:
+        with open(json_path, 'r', encoding='utf-8') as f:
             spec = json.load(f)
     except Exception as e:
         return f"Failed to read JSON: {e}"
@@ -473,6 +481,20 @@ def build_timeline_from_json(json_path: str, fps: float = 24.0, timeline_start_f
     results = []
     skipped = []
 
+    # Insert Fusion compositions for placeholder clips FIRST (before any media clips)
+    # This avoids ripple issues since the timeline is empty at this point
+    if insert_fusion_comp:
+        for clip_spec in clips_spec:
+            if clip_spec.get("file") is None:
+                shot_id = clip_spec.get("shot_id", "?")
+                tl_start = clip_spec.get("timeline_start", 0)
+                frame = timeline_start_frame + round(tl_start * fps)
+                resolve_api.set_playhead_position(frame)
+                if resolve_api.insert_fusion_composition():
+                    results.append(f"  {shot_id}: Fusion comp @ {tl_start}s (placeholder)")
+                else:
+                    skipped.append(f"{shot_id} (Fusion comp insert failed)")
+
     for clip_spec in clips_spec:
         shot_id = clip_spec.get("shot_id", "?")
         file_rel = clip_spec.get("file")
@@ -481,7 +503,8 @@ def build_timeline_from_json(json_path: str, fps: float = 24.0, timeline_start_f
         clip_out = clip_spec.get("clip_out")
 
         if not file_rel:
-            skipped.append(f"{shot_id} (no file — placeholder)")
+            if not insert_fusion_comp:
+                skipped.append(f"{shot_id} (no file -- placeholder)")
             continue
 
         # Find clip in media pool by filename
@@ -644,12 +667,15 @@ def apply_still(still_name: str, clip_name: Optional[str] = None) -> str:
     return f"Still '{still_name}' applied." if success else "Failed to apply still."
 
 @mcp.tool()
-def add_track(track_type: str = "video") -> str:
-    """Add a new track to the current timeline."""
+def add_track(track_type: str = "video", sub_track_type: Optional[str] = None) -> str:
+    """Add a new track to the current timeline. For audio tracks, sub_track_type controls channel format: 'mono', 'stereo', '5.1', '5.1film', '7.1', '7.1film', 'adaptive1'-'adaptive36'."""
     if not resolve_api.is_connected():
         return "Not connected to DaVinci Resolve."
-    success = resolve_api.add_track(track_type)
-    return f"{track_type.capitalize()} track added." if success else f"Failed to add {track_type} track."
+    success = resolve_api.add_track(track_type, sub_track_type)
+    label = f"{track_type.capitalize()}"
+    if sub_track_type:
+        label += f" ({sub_track_type})"
+    return f"{label} track added." if success else f"Failed to add {track_type} track."
 
 @mcp.tool()
 def set_track_name(track_type: str, track_index: int, name: str) -> str:

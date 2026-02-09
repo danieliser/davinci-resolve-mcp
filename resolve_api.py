@@ -949,13 +949,16 @@ class ResolveAPI:
             logger.error(f"Failed to apply still: {e}")
             return False
 
-    def add_track(self, track_type: str = "video") -> bool:
+    def add_track(self, track_type: str = "video", sub_track_type: Optional[str] = None) -> bool:
         """
         Add a new track to the current timeline.
-        
+
         Args:
             track_type (str): Type of track to add ("video", "audio", "subtitle"), defaults to "video".
-        
+            sub_track_type (str, optional): For audio tracks, the channel format:
+                "mono", "stereo", "5.1", "5.1film", "7.1", "7.1film",
+                "adaptive1" through "adaptive36". Defaults to None (Resolve default).
+
         Returns:
             bool: True if successful, False if no timeline or addition fails.
         """
@@ -963,6 +966,8 @@ class ResolveAPI:
         if not timeline:
             return False
         try:
+            if track_type == "audio" and sub_track_type:
+                return timeline.AddTrack(track_type, sub_track_type)
             return timeline.AddTrack(track_type)
         except Exception as e:
             logger.error(f"Failed to add {track_type} track: {e}")
