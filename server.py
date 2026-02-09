@@ -668,13 +668,14 @@ def apply_still(still_name: str, clip_name: Optional[str] = None) -> str:
 
 @mcp.tool()
 def add_track(track_type: str = "video", sub_track_type: Optional[str] = None) -> str:
-    """Add a new track to the current timeline. For audio tracks, sub_track_type controls channel format: 'mono', 'stereo', '5.1', '5.1film', '7.1', '7.1film', 'adaptive1'-'adaptive36'."""
+    """Add a new track to the current timeline. For audio tracks, sub_track_type controls channel format: 'mono', 'stereo', '5.1', '5.1film', '7.1', '7.1film', 'adaptive1'-'adaptive36'. Audio tracks default to 'stereo' if not specified."""
     if not resolve_api.is_connected():
         return "Not connected to DaVinci Resolve."
     success = resolve_api.add_track(track_type, sub_track_type)
+    effective_sub = sub_track_type or ("stereo" if track_type == "audio" else None)
     label = f"{track_type.capitalize()}"
-    if sub_track_type:
-        label += f" ({sub_track_type})"
+    if effective_sub:
+        label += f" ({effective_sub})"
     return f"{label} track added." if success else f"Failed to add {track_type} track."
 
 @mcp.tool()
