@@ -1,156 +1,65 @@
-Here’s an updated version of the README with enhancements reflecting the expanded functionality of the `ResolveAPI` class, improved clarity, and additional details for setup and usage. The structure remains consistent with your original README, but I’ve incorporated the new features (e.g., gallery management, track control, audio adjustments, playback, etc.) and refined the instructions for `uv` installation and Claude integration.
+# DaVinci Resolve MCP Server
+
+A [Model Context Protocol](https://modelcontextprotocol.io/) server for AI-assisted video editing in DaVinci Resolve Studio. **97 tools** covering timeline assembly, Fusion effects, color grading, rendering, media management, and more.
+
+> Forked from [tooflex/davinci-resolve-mcp](https://github.com/tooflex/davinci-resolve-mcp) (32 tools).
+> Expanded by [@danieliser](https://github.com/danieliser) with 65 additional tools, proxy-safe connection handling, Fusion/Lua scripting guides, and type-annotated API layer.
 
 ---
 
-# DaVinci Resolve MCP Server
+## What Can It Do?
 
-A Model Context Protocol (MCP) server that enables AI assistants like Claude to interact with DaVinci Resolve Studio, providing advanced control over editing, color grading, audio, and more.
+With this MCP server connected, an AI assistant can:
 
-## Overview
-
-This server implements the MCP protocol to create a bridge between AI assistants and DaVinci Resolve. It allows AI assistants to:
-
-- Create, load, and manage DaVinci Resolve projects
-- Manipulate timelines, tracks, and clips
-- Import and organize media files
-- Access and modify Fusion compositions
-- Perform color grading and manage stills in the Gallery
-- Adjust audio settings and control playback
-- Navigate between Resolve pages (Media, Edit, Fusion, Color, Fairlight, Deliver)
-- Execute custom Python and Lua scripts
-- Export and import projects
+- **Build complete timelines** from JSON cut lists with frame-accurate clip placement
+- **Add Fusion effects** — glow, color correction, vignettes, animated zooms via Lua
+- **Create animated title cards** with TextPlus, BezierSpline keyframes, and generators
+- **Color grade** — CDL values, LUT application, grade copying between clips
+- **Render** — configure format/codec, queue jobs, monitor progress, export
+- **Manage media** — import, organize into folders, search by name, relink, delete
+- **Control playback** — play, stop, seek to frame, read playhead position
+- **Manage markers and flags** — timeline markers, clip markers, color labels
+- **Handle takes** — add alternate takes, switch between them, finalize
+- **Export timelines** — AAF, EDL, FCP XML, FCPXML formats
 
 ## Requirements
 
-- DaVinci Resolve Studio 18.0 or newer
-- Python 3.10 or newer
-- Access to the DaVinci Resolve scripting API
+- **DaVinci Resolve Studio** 18.0+ (free version does not expose the scripting API)
+- **Python** 3.10+
+- **uv** (recommended) or pip
 
-## Installation with uv
+## Quick Start
 
-[uv](https://github.com/astral-sh/uv) is a fast, modern Python package installer and resolver that outperforms pip. Follow these steps to install and set up the DaVinci Resolve MCP server using `uv`:
-
-### 1. Install uv
-
-If `uv` is not installed:
+### 1. Clone & Install
 
 ```bash
-# Using pip (ensure pip is for Python 3.10+)
-pip install uv
-
-# Using Homebrew (macOS)
-brew install uv
-
-# Using Conda
-conda install -c conda-forge uv
+git clone https://github.com/danieliser/davinci-resolve-mcp.git
+cd davinci-resolve-mcp
+uv venv && source .venv/bin/activate
+uv pip install -r requirements.txt
 ```
 
-Verify installation:
+### 2. Configure Your AI Client
 
-```bash
-uv --version
+**Claude Code** — add to your project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "davinci-resolve": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/absolute/path/to/davinci-resolve-mcp",
+        "server.py"
+      ]
+    }
+  }
+}
 ```
 
-### 2. Create a Virtual Environment
-
-Create and activate a virtual environment to isolate dependencies:
-
-```bash
-uv venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-```
-
-### 3. Install the DaVinci Resolve MCP Server
-
-Install the server and its dependencies from the project directory:
-
-```bash
-# From the project directory (editable install for development)
-uv install -e .
-
-# Or directly from GitHub (replace with your repo URL)
-uv install git+https://github.com/yourusername/davinci-resolve-mcp.git
-```
-
-### 4. Install Dependencies
-
-Ensure `requirements.txt` includes:
-
-```
-mcp
-pydantic
-```
-
-Install them:
-
-```bash
-uv install -r requirements.txt
-```
-
-## Configuration
-
-Before running the server, ensure:
-
-1. DaVinci Resolve Studio is running.
-2. Python can access the DaVinci Resolve scripting API (handled automatically by `ResolveAPI` in most cases).
-
-### API Access Configuration
-
-The `ResolveAPI` class dynamically locates the scripting API, but you may need to configure it manually in some cases:
-
-#### macOS
-
-The API is typically available at:
-
-- `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules`
-- Or user-specific: `~/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules`
-
-No additional setup is usually required.
-
-#### Windows
-
-Add the API path if not detected:
-
-```python
-import sys
-sys.path.append("C:\\ProgramData\\Blackmagic Design\\DaVinci Resolve\\Support\\Developer\\Scripting\\Modules")
-```
-
-#### Linux
-
-Set the environment variable:
-
-```bash
-export PYTHONPATH=$PYTHONPATH:/opt/resolve/Developer/Scripting/Modules
-```
-
-Alternatively, set a custom path via an environment variable:
-
-```bash
-export RESOLVE_SCRIPT_PATH="/custom/path/to/scripting/modules"
-```
-
-## Running the Server
-
-Start the MCP server:
-
-```bash
-# Run directly with Python
-python -m resolve_mcp.server
-
-# Or with uv
-uv run resolve_mcp/server.py
-```
-
-The server will launch and connect to DaVinci Resolve, logging output like:
-
-```
-2025-03-19 ... - resolve_mcp - INFO - Successfully connected to DaVinci Resolve.
-```
-
-### Claude Integration Configuration
-
-To integrate with Claude Desktop, update your `claude_desktop_config.json` (e.g., `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+**Claude Desktop** — add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
@@ -160,136 +69,390 @@ To integrate with Claude Desktop, update your `claude_desktop_config.json` (e.g.
       "args": [
         "run",
         "--directory",
-        "/path/to/davinci-resolve-mcp",
-        "resolve_mcp/server.py"
+        "/absolute/path/to/davinci-resolve-mcp",
+        "server.py"
       ]
     }
   }
 }
 ```
 
-- Replace `/path/to/uv` with the path to your `uv` executable (e.g., `/usr/local/bin/uv` or `C:\Users\username\.cargo\bin\uv.exe`).
-- Replace `/path/to/davinci-resolve-mcp` with the absolute path to your project directory.
+### 3. Launch
 
-Restart Claude Desktop to enable the server. Look for a hammer icon in the input box to confirm integration.
+1. Open **DaVinci Resolve Studio**
+2. Start (or restart) your AI client
+3. The MCP server connects automatically via Resolve's scripting API
+
+---
+
+## All 97 Tools
+
+### Project Management (7)
+
+| Tool | Description |
+|------|-------------|
+| `create_project` | Create a new project |
+| `load_project` | Load an existing project by name |
+| `save_project` | Save the current project |
+| `export_project` | Export project to .drp file |
+| `import_project` | Import project from .drp file |
+| `set_project_setting` | Set a project setting (key/value) |
+| `open_page` | Navigate to a page (media, edit, fusion, color, fairlight, deliver) |
+
+### Timeline Operations (14)
+
+| Tool | Description |
+|------|-------------|
+| `create_timeline` | Create a new empty timeline |
+| `delete_timeline` | Delete a timeline by index |
+| `set_current_timeline` | Switch active timeline by index |
+| `duplicate_timeline` | Duplicate current timeline |
+| `create_timeline_from_clips` | Create timeline from named clips |
+| `import_timeline_from_file` | Import timeline from XML/EDL/AAF |
+| `export_current_timeline` | Export timeline to AAF/EDL/FCP XML/FCPXML |
+| `get_timeline_setting` | Read a timeline setting |
+| `set_timeline_setting` | Write a timeline setting |
+| `get_track_count` | Count tracks by type (video/audio) |
+| `add_track` | Add a video or audio track |
+| `set_track_name` | Rename a track |
+| `enable_track` | Enable/disable a track |
+| `build_timeline_from_json` | **Build complete timeline from JSON cut list** — handles clip_in/out, recordFrame placement, media pool search |
+
+### Clip & Item Operations (10)
+
+| Tool | Description |
+|------|-------------|
+| `append_to_timeline` | Append clips by name to current timeline |
+| `append_clip_to_track` | Place a clip on a specific track at a specific frame |
+| `get_timeline_items` | List items on a track with start/end frames |
+| `get_timeline_item_info` | Detailed info for a timeline item (offsets, duration) |
+| `delete_timeline_item` | Remove item by index with optional ripple |
+| `trim_timeline_item` | Adjust source trim offsets (left/right) |
+| `set_clip_property` | Set any property on a timeline clip |
+| `get_current_video_item` | Get the item under the playhead |
+| `create_compound_clip` | Combine items into a compound clip |
+| `insert_fusion_composition` | Insert a Fusion comp at the playhead |
+
+### Media Pool (10)
+
+| Tool | Description |
+|------|-------------|
+| `import_media` | Import files into current media pool folder |
+| `list_media_pool` | List folder tree with clip names and types |
+| `add_sub_folder` | Create a subfolder |
+| `move_clips_to_folder` | Move clips between folders by name |
+| `get_media_clip_metadata` | Read clip metadata (all or specific key) |
+| `set_media_clip_metadata` | Write clip metadata (key/value pairs) |
+| `export_metadata` | Export clip metadata to CSV |
+| `relink_clips` | Relink clips to a new folder path |
+| `delete_media_clips` | Remove clips from media pool |
+| `delete_media_folders` | Remove folders from media pool |
+
+### Fusion / Compositing (12)
+
+| Tool | Description |
+|------|-------------|
+| `execute_lua` | **Run arbitrary Lua in Fusion** — the escape hatch for anything not covered by dedicated tools |
+| `create_fusion_node` | Add a tool to the current Fusion comp |
+| `add_fusion_comp` | Add a new comp to a timeline item |
+| `import_fusion_comp` | Import .comp/.setting file into an item |
+| `export_fusion_comp` | Export a comp to file |
+| `get_fusion_comp_names` | List comp names on an item |
+| `create_fusion_clip` | Create a Fusion clip from timeline items |
+| `insert_title` | Insert Text+ title at playhead |
+| `insert_fusion_title` | Insert Fusion-based title |
+| `insert_generator` | Insert generator (Solid Color, etc.) |
+| `insert_fusion_generator` | Insert Fusion generator |
+| `refresh` | Refresh all internal Resolve object references |
+| `hot_reload` | **Hot-reload resolve_api.py** without restarting the MCP server — preserves live IPC connection |
+
+### Color Grading (8)
+
+| Tool | Description |
+|------|-------------|
+| `add_color_node` | Add a node to current clip's grade |
+| `set_lut` | Apply LUT to a specific node |
+| `set_cdl` | Apply CDL values (slope/offset/power/saturation) |
+| `copy_grades` | Copy grade from one clip to others |
+| `apply_grade_from_drx` | Apply .drx grade file |
+| `refresh_lut_list` | Refresh available LUTs |
+| `set_clip_color` | Set clip color label |
+| `set_current_version` | Switch grade version |
+
+### Markers & Flags (6)
+
+| Tool | Description |
+|------|-------------|
+| `add_timeline_marker` | Add marker to timeline at frame |
+| `get_timeline_markers` | Get all timeline markers |
+| `delete_timeline_markers_by_color` | Delete markers by color |
+| `add_clip_marker` | Add marker to media pool clip |
+| `get_clip_markers` | Get markers on a clip |
+| `add_flag` / `get_flag_list` | Add/read flags on timeline items |
+
+### Takes (4)
+
+| Tool | Description |
+|------|-------------|
+| `add_take` | Add alternate take from media pool |
+| `get_takes_count` | Count takes on an item |
+| `select_take` | Switch active take by index |
+| `finalize_take` | Make selected take permanent |
+
+### Stills & Gallery (4)
+
+| Tool | Description |
+|------|-------------|
+| `grab_still` | Capture still from current frame |
+| `grab_all_stills` | Capture stills from all clips (first/middle frame) |
+| `save_still` | Save current grade as still to album |
+| `apply_still` | Apply a saved still/grade to a clip |
+
+### Audio (2)
+
+| Tool | Description |
+|------|-------------|
+| `set_audio_volume` | Set volume on a timeline clip |
+| `set_track_volume` | Set volume on an audio track |
+
+### Playback (3)
+
+| Tool | Description |
+|------|-------------|
+| `play_timeline` | Start playback |
+| `stop_timeline` | Stop playback |
+| `set_playhead_position` | Seek to a specific frame |
+
+### Rendering (10)
+
+| Tool | Description |
+|------|-------------|
+| `start_project_render` | Quick render with optional preset |
+| `set_render_settings` | Configure TargetDir, CustomName, resolution, etc. |
+| `set_render_format_and_codec` | Set format (mp4, mov, etc.) and codec (H264, etc.) |
+| `get_render_formats` | List all supported formats |
+| `get_render_codecs` | List codecs for a format |
+| `add_render_job` | Add job to queue |
+| `delete_render_job` / `delete_all_render_jobs` | Remove jobs |
+| `get_render_job_list` | List all jobs with details |
+| `get_render_job_status` | Poll job status |
+| `start_rendering` / `stop_rendering` / `is_rendering` | Control render execution |
+
+---
+
+## Fusion & Lua Scripting Guide
+
+The `execute_lua` tool is the most powerful capability in this MCP server. It runs arbitrary Lua inside Resolve's Fusion environment, giving access to anything the Fusion scripting API supports.
+
+### Why Lua Instead of Python?
+
+DaVinci Resolve's Python API has significant limitations for Fusion work:
+
+- **BezierSpline** (keyframe animations) returns `NoneType` from Python — only works in Lua
+- **Tool connections** are more reliable through Lua's `comp:AddTool()` + direct property assignment
+- **Fusion page state** is accessible through Lua but not fully through Python
+
+### Basic Pattern
+
+```python
+# From your AI assistant, call execute_lua with a Lua script string:
+execute_lua(script="""
+local comp = fusion:GetCurrentComp()
+local mi = comp:FindTool("MediaIn1")
+local mo = comp:FindTool("MediaOut1")
+
+local sg = comp:AddTool("SoftGlow", 0, 0)
+sg.Input = mi.Output
+sg.Blend = 0.15
+sg.Threshold = 0.7
+
+mo.Input = sg.Output
+""")
+```
+
+### Animated Properties with BezierSpline
+
+```lua
+-- Animated zoom over the clip's duration
+local xf = comp:AddTool("Transform", -1, 0)
+xf.Input = mi.Output
+xf.Size = comp:BezierSpline({
+    [comp.RenderStart] = { Value = 1.0 },
+    [comp.RenderEnd]   = { Value = 1.06 }
+})
+```
+
+### TextPlus with Multiline Text
+
+```lua
+-- Use Lua's native \n for newlines — NOT Python string escaping
+local t = comp:AddTool("TextPlus", 0, 0)
+t.StyledText = [["Click Like Thunder"\nby Sarai]]
+t.Font = "Futura"
+t.Style = "Bold"
+t.Size = 0.072
+t.Center = { 0.5, 0.54 }
+```
+
+**Critical:** When building Lua strings from Python, `\n` gets corrupted into a literal backslash-n. Use Lua long string syntax `[[ ]]` for any text containing special characters.
+
+### Debugging Lua Scripts
+
+`comp.Execute()` does not return Lua values. To get data out:
+
+```lua
+-- Write diagnostics to a temp file
+local f = io.open("/tmp/fusion_debug.txt", "w")
+f:write("Tool count: " .. tostring(#comp:GetToolList()) .. "\n")
+for i, tool in ipairs(comp:GetToolList()) do
+    f:write(tool:GetAttrs().TOOLS_Name .. "\n")
+end
+f:close()
+```
+
+Then read `/tmp/fusion_debug.txt` from your AI client.
+
+### Comp Targeting
+
+Always use `fusion.CurrentComp` to get the active composition:
+
+```python
+# CORRECT — matches what you see in the Fusion page UI
+comp = fusion.CurrentComp
+
+# WRONG — returns comps by creation order, often targets the wrong one
+comp = item.GetFusionCompByIndex(1)
+```
+
+---
+
+## API Architecture
+
+### Type-Safe Proxy Handling
+
+Resolve's scripting API returns opaque C-extension proxy objects. This fork adds type aliases documenting intent:
+
+```python
+ResolveApp = Any      # dvr_script.scriptapp("Resolve")
+Timeline = Any        # project.GetCurrentTimeline()
+TimelineItem = Any    # timeline.GetItemListInTrack(...)[n]
+FusionComp = Any      # fusion.CurrentComp
+MediaPoolItem = Any   # folder.GetClips()[n]
+# ... 15 total aliases
+```
+
+### Auto-Refresh Connection Handling
+
+Resolve's C-extension proxies go stale when the user switches projects, timelines, or pages. This fork adds three defensive helpers that detect stale proxies and re-establish the connection:
+
+```python
+def _ensure_project(self) -> bool:
+    """Test proxy with GetName(), refresh() if stale."""
+
+def _ensure_media_pool(self) -> bool:
+    """Test proxy with GetRootFolder(), refresh() if stale."""
+
+def _ensure_timeline(self) -> Optional[Timeline]:
+    """Test proxy with GetName(), refresh() and retry if stale."""
+```
+
+Every API method that touches project/timeline/media pool objects calls the appropriate `_ensure_*` method first. This eliminates the most common failure mode: "method returned None" because the proxy expired.
+
+### Hot Reload
+
+The `hot_reload` tool reloads `resolve_api.py` from disk without restarting the MCP server process:
+
+```
+hot_reload()
+→ "Hot-reloaded resolve_api.py. Connection preserved: True."
+```
+
+**How it works:** The C-extension IPC socket handle is preserved across the reload. `importlib.reload()` picks up code changes, a new `ResolveAPI` instance is created with `__new__()` (bypassing `__init__`), the old socket handle is injected, and `refresh()` repopulates all proxy references.
+
+Without this preservation, reloading would destroy the IPC connection (the C-extension socket doesn't survive Python object recreation).
+
+---
+
+## Known Gotchas
+
+### InsertFusionCompositionIntoTimeline Always Ripples
+
+Inserting a Fusion composition pushes all downstream clips. **Workaround:** insert Fusion comps first on an empty timeline before placing clips, or delete and re-place downstream items after insertion.
+
+### Fusion Comp Duration Is Locked
+
+`InsertFusionCompositionIntoTimeline` creates exactly 120 frames (5s at 24fps). The duration cannot be changed via the scripting API.
+
+### Loader Tool + PNG Alpha Is Broken
+
+The Fusion Loader tool's `PostMultiplyByAlpha` fills transparent areas with the image's edge color. `GlobalIn`/`GlobalOut` default to frame 0, causing frame range mismatches. **Workaround:** use TextPlus for text-based overlays, or pre-composite images into full-resolution video clips outside Fusion.
+
+### AppendToTimeline + trackIndex Forces Mono
+
+When placing audio with an explicit `trackIndex`, stereo WAV files are forced to mono. No API workaround exists — manual drag-and-drop is the only way to place stereo audio on a specific track.
+
+### GetClips() Returns a Dict in Newer Resolve
+
+`folder.GetClips()` returns `{int: clip}` dict, not a list. This fork handles both formats throughout.
+
+### Timeline Frame Offset
+
+Resolve timelines start at frame 86400 (1-hour offset at 24fps). Convert seconds to frames:
+
+```
+frame = 86400 + round(seconds × fps)
+```
+
+---
 
 ## Troubleshooting
 
-### Connection Issues
+### "Not connected to DaVinci Resolve"
 
-If the server fails to connect:
+1. Ensure **DaVinci Resolve Studio** is running (not the free version)
+2. The scripting API must be enabled in Resolve preferences
+3. Restart the MCP server — the connection is established on startup
 
-1. Ensure DaVinci Resolve Studio is running.
-2. Check Resolve’s preferences to confirm scripting is enabled.
-3. Verify Python version compatibility (3.10+ recommended):
-   ```bash
-   python --version
-   ```
-4. Confirm API paths are accessible (see logs in `~/Library/Logs/Claude/mcp*.log` on macOS or `%userprofile%\AppData\Roaming\Claude\Logs\` on Windows).
-
-### Dependency Issues
-
-If modules like `mcp` or `pydantic` are missing:
+### MCP Server Won't Start
 
 ```bash
-uv install mcp pydantic
+# Check Python version (needs 3.10+)
+python --version
+
+# Check dependencies
+uv pip install mcp pydantic
+
+# Check Resolve scripting module is findable
+python -c "import DaVinciResolveScript"
 ```
 
-### Python Version Compatibility
+### API Module Not Found
 
-Switch to a compatible version with `pyenv` if needed:
+The Resolve scripting module location varies by OS:
+
+| OS | Path |
+|----|------|
+| macOS | `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules` |
+| Windows | `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\Developer\Scripting\Modules` |
+| Linux | `/opt/resolve/Developer/Scripting/Modules` |
+
+The `ResolveAPI` class searches these paths automatically. If your installation is non-standard, set:
 
 ```bash
-pyenv install 3.10.12
-pyenv shell 3.10.12
-uv install -r requirements.txt
+export RESOLVE_SCRIPT_PATH="/custom/path/to/Scripting/Modules"
 ```
 
-## Available Tools and Resources
+### Stale Proxy Errors
 
-The MCP server provides extensive functionality through the `ResolveAPI` class:
+If tools return unexpected `None` results after switching projects or timelines in Resolve, call `refresh()` to re-establish all proxy references.
 
-### Project Management
+---
 
-- Create new projects (`create_project`)
-- Load existing projects (`load_project`)
-- Save current projects (`save_project`)
-- Export/import projects (`export_project`, `import_project`)
-- Get/set project settings (`get_project_settings`, `set_project_setting`)
+## Attribution
 
-### Timeline Operations
-
-- Create new timelines (`create_timeline`)
-- Set/get current timeline (`set_current_timeline`, `get_current_timeline`)
-- Add/manage tracks (`add_track`, `set_track_name`, `enable_track`)
-- Get timeline items (`get_timeline_items`)
-- Set clip properties (`set_clip_property`)
-- Add markers (`add_timeline_marker`)
-
-### Media Management
-
-- Import media files (`add_items_to_media_pool`)
-- Create media pool folders (`add_sub_folder`)
-- Create timelines from clips (`create_timeline_from_clips`)
-- Get clip metadata (`get_clip_metadata`)
-
-### Fusion Integration
-
-- Add Fusion compositions to clips (`create_fusion_node`)
-- Create/manage Fusion nodes (`create_fusion_node`)
-- Access current composition (`get_current_comp`)
-
-### Color Grading
-
-- Get/add color nodes (`get_color_page_nodes`, `add_color_node`)
-- Save/apply stills (`save_still`, `apply_still`)
-- Manage gallery albums (`get_gallery_albums`)
-
-### Audio Control
-
-- Get/set clip audio volume (`get_audio_volume`, `set_audio_volume`)
-- Set track volume (`set_track_volume`)
-
-### Playback Control
-
-- Play/stop playback (`play`, `stop`)
-- Get/set playhead position (`get_current_timecode`, `set_playhead_position`)
-
-### Rendering
-
-- Start rendering (`start_render`)
-- Get render status (`get_render_status`)
-
-### Navigation
-
-- Open specific pages (`open_page`: Media, Edit, Fusion, Color, Fairlight, Deliver)
-
-### Advanced Operations
-
-- Execute custom Python code (`execute_python`)
-- Execute Lua scripts in Fusion (`execute_lua`)
-
-## Development
-
-To contribute:
-
-1. Fork the repository: `https://github.com/yourusername/davinci-resolve-mcp`
-2. Create a feature branch: `git checkout -b feature-name`
-3. Install dependencies: `uv install -e .`
-4. Make changes and test: `uv run resolve_mcp/server.py`
-5. Submit a pull request.
+- **Original project:** [tooflex/davinci-resolve-mcp](https://github.com/tooflex/davinci-resolve-mcp) — 32 MCP tools covering core project/timeline/media/Fusion operations
+- **This fork:** [@danieliser](https://github.com/danieliser) — expanded to 97 tools with proxy-safe connection handling, hot reload, timeline-from-JSON builder, comprehensive render pipeline, Fusion comp management, color grading tools, marker/flag/take management, media pool operations, and Lua scripting documentation
 
 ## License
 
 [MIT License](LICENSE)
-
----
-
-### Key Updates
-
-- **Expanded Features**: Added new capabilities like gallery management, track control, audio adjustments, playback, and project export/import to the “Available Tools and Resources” section.
-- **Installation Clarity**: Improved `uv` instructions with verification steps and explicit paths for Claude integration.
-- **Troubleshooting**: Enhanced with specific commands and log locations for debugging.
-- **Configuration**: Updated API access notes to reflect the dynamic path handling in `ResolveAPI`.
-
-This README now fully aligns with the enhanced `ResolveAPI` class, providing a comprehensive guide for users and developers. Let me know if you’d like further adjustments!
